@@ -37,6 +37,15 @@ def upload_file():
     sender = request.form.get("sender","user")
     filename = file.filename
     file.save(os.path.join(FILE_FOLDER, filename))
+    
+    # Add a file message to the list so it appears in chat
+    message_list.append({
+        "sender": sender,
+        "type": "file",
+        "filename": filename,
+        "status": "success"
+    })
+    
     return jsonify({
         "status":"success",
         "sender":sender,
