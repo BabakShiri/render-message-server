@@ -1,65 +1,59 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
 
 app = Flask(__name__)
 
-# Store messages
 messages = []
-
-# Store uploaded files
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Receive text/image/video/file
+# Serve uploaded audio and files via url
+@app.route('/uploads/<filename>')
+def serve_upload(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
 @app.route("/send", methods=["POST"])
 def send():
     data = request.get_json()
     messages.append(data)
     return "", 200
 
-# Get all messages
 @app.route("/receive", methods=["GET"])
 def receive():
     return jsonify(messages)
 
-# Upload voice/file and generate corresponding message
 @app.route("/upload_file", methods=["POST"])
 def upload_file():
     if "file" not in request.files:
         return "No file", 400
-
     file = request.files["file"]
     if file.filename == "":
         return "No filename", 400
 
-    # Save safely
-    path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(path)
+    save_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(save_path)
 
-    # Judge file type and create matched message
-    filename = file.filename.lower()
-    file_url = f"https://render-message-server.onrender.com/uploads/{file.filename}"
+    # Generate accessible file link
+    base_url = request.host_url
+    file_link = f"{base_url}uploads/{file.filename}"
+    name_lower = file.filename.lower()
 
-    if filename.endswith((".m4a", ".mp3", ".wav")):
-        # Voice file, add voice type message
-        voice_msg = {
+    # Distinguish voice and common file
+    if name_lower.endswith((".m4a", ".mp3", ".wav")):
+        new_msg = {
             "msgType": "voice",
-            "content": file_url,
-            "extraInfo": "Voice Message"
+            "content": file_link,
+            "extraInfo": "Voice message"
         }
-        messages.append(voice_msg)
     else:
-        # Other common files
-        file_msg = {
+        new_msg = {
             "msgType": "file",
-            "content": file_url,
+            "content": file_link,
             "extraInfo": file.filename
         }
-        messages.append(file_msg)
-
+    messages.append(new_msg)
     return "OK", 200
 
-# List all files
 @app.route("/all_files", methods=["GET"])
 def all_files():
     return jsonify({"files": os.listdir(UPLOAD_FOLDER)})
