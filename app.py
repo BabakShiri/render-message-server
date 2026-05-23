@@ -22,7 +22,7 @@ def send():
 def receive():
     return jsonify(messages)
 
-# Upload voice/file (NO CRASH)
+# Upload voice/file and generate corresponding message
 @app.route("/upload_file", methods=["POST"])
 def upload_file():
     if "file" not in request.files:
@@ -35,6 +35,28 @@ def upload_file():
     # Save safely
     path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(path)
+
+    # Judge file type and create matched message
+    filename = file.filename.lower()
+    file_url = f"https://render-message-server.onrender.com/uploads/{file.filename}"
+
+    if filename.endswith((".m4a", ".mp3", ".wav")):
+        # Voice file, add voice type message
+        voice_msg = {
+            "msgType": "voice",
+            "content": file_url,
+            "extraInfo": "Voice Message"
+        }
+        messages.append(voice_msg)
+    else:
+        # Other common files
+        file_msg = {
+            "msgType": "file",
+            "content": file_url,
+            "extraInfo": file.filename
+        }
+        messages.append(file_msg)
+
     return "OK", 200
 
 # List all files
