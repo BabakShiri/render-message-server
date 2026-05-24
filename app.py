@@ -28,7 +28,14 @@ def send():
 def receive():
     return jsonify(messages)
 
-# 4. Upload file (only saves, no duplicate message)
+# 4. NEW: Clear all messages from the server
+@app.route("/clear_messages", methods=["POST"])
+def clear_messages():
+    global messages
+    messages.clear()  # Empty the list permanently
+    return jsonify({"status": "cleared"}), 200
+
+# 5. Upload file (only saves, no duplicate message)
 @app.route("/upload_file", methods=["POST"])
 def upload_file():
     if "file" not in request.files:
@@ -47,7 +54,7 @@ def upload_file():
     file_url = f"{base_url}uploads/{file.filename}"
     return file_url, 200
 
-# 5. List all files (for your app's file browser)
+# 6. List all files (for your app's file browser)
 @app.route("/all_files", methods=["GET"])
 def all_files():
     return jsonify({"files": os.listdir(UPLOAD_FOLDER)})
