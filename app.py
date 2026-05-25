@@ -1,63 +1,97 @@
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import os
+import uuid
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-# Store messages
+# Configuration
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'avi', 'm4a', 'mp3', 'wav'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
+
+# In-memory storage (replace with a database in production)
 messages = []
 
-# Upload folder config
-UPLOAD_FOLDER = "uploads"
+# Create upload folder if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# ------------------- Core Routes -------------------
-# 1. Serve uploaded files (critical for voice playback)
-@app.route('/uploads/<filename>')
-def serve_upload(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-# 2. Receive messages (text/voice/file) from Android
-@app.route("/send", methods=["POST"])
-def send():
-    data = request.get_json()
+@app.route('/send', methods=['POST'])
+def send_message():
+    """Receive and store messages from clients"""
+    data = request.json
+    if not data:
+        return jsonify({"error": "No data provided"}), 400
+    
     messages.append(data)
-    return "", 200
+    return jsonify({"status": "success"}), 200
 
-# 3. Get all messages
-@app.route("/receive", methods=["GET"])
-def receive():
-    return jsonify(messages)
+@app.route('/receive', methods=['GET'])
+def receive_messages():
+    """Send stored messages to clients (polling endpoint)"""
+    return jsonify(messages), 200
 
-# 4. NEW: Clear all messages from the server
-@app.route("/clear_messages", methods=["POST"])
+@app.route('/upload_file', methods=['POST'])
+def upload_file():
+    """Handle file uploads from clients"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    sender = request.form.get('sender', 'unknown')
+    
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file and allowed_file(file.filename):
+        # Generate a unique filename to avoid conflicts
+        filename = secure_filename(file.filename)
+        unique_filename = f"{uuid.uuid4().hex}_{filename}"
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        file.save(file_path)
+        
+        # Return ONLY the filename (not full URL) to the client
+        # This is critical for your Android app to download it later
+        return jsonify({
+            "filename": unique_filename,
+            "sender": sender
+        }), 200
+    
+    return jsonify({"error": "File type not allowed"}), 400
+
+@app.route('/download_file/<filename>', methods=['GET'])
+def download_file(filename):
+    """Serve uploaded files to clients (matches your Android Retrofit endpoint)"""
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if not os.path.exists(file_path):
+        return jsonify({"error": "File not found"}), 404
+    
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'],
+        filename,
+        as_attachment=False  # False for inline viewing, True for download
+    )
+
+@app.route('/all_files', methods=['GET'])
+def list_files():
+    """List all uploaded files (for debugging)"""
+    files = os.listdir(app.config['UPLOAD_FOLDER'])
+    return jsonify({"files": files}), 200
+
+@app.route('/clear_messages', methods=['POST'])
 def clear_messages():
+    """Clear all stored messages (called when user clears chat)"""
     global messages
-    messages.clear()  # Empty the list permanently
+    messages = []
     return jsonify({"status": "cleared"}), 200
 
-# 5. Upload file (only saves, no duplicate message)
-@app.route("/upload_file", methods=["POST"])
-def upload_file():
-    if "file" not in request.files:
-        return "No file", 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return "No filename", 400
-
-    # Save the file
-    save_path = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(save_path)
-
-    # Return only the file URL to Android (no auto-created message)
-    base_url = request.host_url
-    file_url = f"{base_url}uploads/{file.filename}"
-    return file_url, 200
-
-# 6. List all files (for your app's file browser)
-@app.route("/all_files", methods=["GET"])
-def all_files():
-    return jsonify({"files": os.listdir(UPLOAD_FOLDER)})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
