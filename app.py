@@ -1,28 +1,25 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template_string, send_from_directory
 from flask_cors import CORS
 import os
 
 app = Flask(__name__)
 CORS(app)
 
-# --------------------------
-# Store all messages in memory
-# --------------------------
+# Store text messages and uploaded files
 messages = []
+UPLOAD_FOLDER = "uploaded_files"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # --------------------------
-# Receive message from Android
+# Text message endpoints (unchanged, keep working)
 # --------------------------
 @app.route("/send-message", methods=["POST"])
 def receive_message():
     data = request.get_json()
-    messages.append(data)  # Add new message to the list
+    messages.append(data)
     print(f"Received message #{len(messages)}: {data}")
     return jsonify({"status": "ok", "count": len(messages)}), 200
 
-# --------------------------
-# View list of messages as JSON
-# --------------------------
 @app.route("/messages")
 def get_messages():
     return jsonify({
@@ -30,9 +27,6 @@ def get_messages():
         "messages": messages
     })
 
-# --------------------------
-# View messages in a simple HTML page
-# --------------------------
 @app.route("/messages/view")
 def view_messages():
     html = """
@@ -60,14 +54,74 @@ def view_messages():
     """
     return render_template_string(html, total=len(messages), messages=messages)
 
-# --------------------------
-# Clear all messages
-# --------------------------
 @app.route("/messages/clear")
 def clear_messages():
     global messages
     messages = []
     return "All messages cleared!"
+
+# --------------------------
+# File upload endpoints (new)
+# --------------------------
+@app.route("/upload-file", methods=["POST"])
+def upload_file():
+    if "file" not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+
+    # Get metadata from form data
+    timestamp = request.form.get("timestamp", str(int(os.times.time() * 1000)))
+    username = request.form.get("username", "AndroidUser")
+    receivename = request.form.get("receivename", "ChatReceiver")
+
+    # Save file
+    filename = f"{timestamp}_{file.filename}"
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(file_path)
+
+    # Add to messages list as a file message
+    file_msg = {
+        "timestamp": int(timestamp),
+        "content": file.filename,
+        "msgType": "file",
+        "username": username,
+        "receivename": receivename,
+        "isSentByMe": True,
+        "file_url": f"/files/{filename}"
+    }
+    messages.append(file_msg)
+
+    print(f"File uploaded: {filename}")
+    return jsonify({
+        "status": "ok",
+        "filename": filename,
+        "url": f"/files/{filename}"
+    }), 200
+
+# --------------------------
+# File download endpoints (new)
+# --------------------------
+@app.route("/files/<filename>")
+def download_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+@app.route("/files/list")
+def list_files():
+    return jsonify({
+        "total_files": len(os.listdir(UPLOAD_FOLDER)),
+        "files": os.listdir(UPLOAD_FOLDER)
+    })
+
+@app.route("/files/clear")
+def clear_files():
+    for filename in os.listdir(UPLOAD_FOLDER):
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        if os.path.isfile(file_path):
+            os.unlink(file_path)
+    return "All files cleared!"
 
 if __name__ == "__main__":
     os.environ["PYTHONUNBUFFERED"] = "1"
