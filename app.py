@@ -1,97 +1,90 @@
 from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
 import os
-import uuid
-from werkzeug.utils import secure_filename
+import shutil
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
 
-# Configuration
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'avi', 'm4a', 'mp3', 'wav'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB max file size
-
-# In-memory storage (replace with a database in production)
-messages = []
-
-# Create upload folder if it doesn't exist
+UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-@app.route('/send', methods=['POST'])
-def send_message():
-    """Receive and store messages from clients"""
-    data = request.json
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
-    
-    messages.append(data)
-    return jsonify({"status": "success"}), 200
-
-@app.route('/receive', methods=['GET'])
-def receive_messages():
-    """Send stored messages to clients (polling endpoint)"""
-    return jsonify(messages), 200
-
-@app.route('/upload_file', methods=['POST'])
-def upload_file():
-    """Handle file uploads from clients"""
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    
-    file = request.files['file']
-    sender = request.form.get('sender', 'unknown')
-    
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    
-    if file and allowed_file(file.filename):
-        # Generate a unique filename to avoid conflicts
-        filename = secure_filename(file.filename)
-        unique_filename = f"{uuid.uuid4().hex}_{filename}"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-        file.save(file_path)
-        
-        # Return ONLY the filename (not full URL) to the client
-        # This is critical for your Android app to download it later
+# Receive text message from Android
+@app.route("/send-message", methods=["POST"])
+def receive_text_message():
+    try:
+        message_data = request.get_json()
+        print("Received Text Message:", message_data)
         return jsonify({
-            "filename": unique_filename,
-            "sender": sender
+            "status": "success",
+            "message": "Text received"
         }), 200
-    
-    return jsonify({"error": "File type not allowed"}), 400
+    except Exception as e:
+        print("Error:", str(e))
+        return jsonify({"status": "error", "detail": str(e)}), 400
 
-@app.route('/download_file/<filename>', methods=['GET'])
-def download_file(filename):
-    """Serve uploaded files to clients (matches your Android Retrofit endpoint)"""
-    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    if not os.path.exists(file_path):
-        return jsonify({"error": "File not found"}), 404
-    
-    return send_from_directory(
-        app.config['UPLOAD_FOLDER'],
-        filename,
-        as_attachment=False  # False for inline viewing, True for download
-    )
+# Receive file / image upload
+@app.route("/upload-file", methods=["POST"])
+def receive_upload_file():
+    try:
+        if "file" not in request.files:
+            return jsonify({"status": "error", "detail": "No file uploaded"}), 400
 
-@app.route('/all_files', methods=['GET'])
-def list_files():
-    """List all uploaded files (for debugging)"""
-    files = os.listdir(app.config['UPLOAD_FOLDER'])
-    return jsonify({"files": files}), 200
+        file = request.files["file"]
+        timestamp = request.form.get("timestamp", "")
+        msg_type = request.form.get("msgType", "")
+        username = request.form.get("username", "")
+        receivename = request.form.get("receivename", "")
 
-@app.route('/clear_messages', methods=['POST'])
-def clear_messages():
-    """Clear all stored messages (called when user clears chat)"""
-    global messages
-    messages = []
-    return jsonify({"status": "cleared"}), 200
+        print("Received File Upload Info")
+        print(f"timestamp: {timestamp}")
+        print(f"msgType: {msg_type}")
+        print(f"username: {username}")
+        print(f"receivename: {receivename}")
+        print(f"File Name: {file.filename}")
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+        if file.filename:
+            save_path = os.path.join(UPLOAD_FOLDER, file.filename)
+            file.save(save_path)
+            print(f"File saved to: {save_path}")
+
+        return jsonify({
+            "status": "success",
+            "message": "File uploaded"
+        }), 200
+    except Exception as e:
+        print("Upload Error:", str(e))
+        return jsonify({"status": "error", "detail": str(e)}), 400
+
+# List all uploaded files
+@app.route("/list-all-files", methods=["GET"])
+def list_all_files():
+    try:
+        file_list = os.listdir(UPLOAD_FOLDER)
+        return jsonify({
+            "total_files": len(file_list),
+            "files": file_list
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "detail": str(e)}), 400
+
+# Access single file
+@app.route("/files/<filename>", methods=["GET"])
+def view_file(filename):
+    return send_from_directory(UPLOAD_FOLDER, filename)
+
+# Clear all files
+@app.route("/clear-all", methods=["GET"])
+def clear_all_files():
+    try:
+        for filename in os.listdir(UPLOAD_FOLDER):
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        return "✅ All files cleared successfully!", 200
+    except Exception as e:
+        return f"❌ Error: {str(e)}", 500
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
