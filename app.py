@@ -1,76 +1,56 @@
+import logging
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import os
 import shutil
 import sys
 
+# Enable full request logging
+logging.basicConfig(level=logging.INFO)
+werkzeug_log = logging.getLogger('werkzeug')
+werkzeug_log.setLevel(logging.INFO)
+
 app = Flask(__name__)
 CORS(app)
-
-# Critical for Render: force logs to print instantly, no buffer
-sys.stdout = sys.__stdout__
-sys.stderr = sys.__stderr__
 os.environ["PYTHONUNBUFFERED"] = "1"
+sys.stdout.reconfigure(line_buffering=True)
 
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Receive text message
 @app.route("/send-message", methods=["POST"])
 def receive_text():
-    try:
-        raw_data = request.get_json(force=True)
-        print("----------------------------------------")
-        print("RECEIVED TEXT JSON:")
-        print(raw_data)
-        print("----------------------------------------")
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        print(f"ERROR parsing text: {str(e)}")
-        return jsonify({"status": "error"}), 400
+    print("\n===== New POST /send-message =====")
+    print("Headers:", dict(request.headers))
+    print("Raw JSON:", request.get_json(force=True, silent=True))
+    return jsonify({"status": "ok"}), 200
 
-# Receive file upload
 @app.route("/upload-file", methods=["POST"])
 def receive_file():
-    try:
-        file = request.files.get("file")
-        form_data = dict(request.form)
-        print("----------------------------------------")
-        print("RECEIVED FILE UPLOAD")
-        print("Form data:", form_data)
-        print("File name:", file.filename if file else "No file")
-        print("----------------------------------------")
+    print("\n===== New POST /upload-file =====")
+    print("Form data:", dict(request.form))
+    print("File:", request.files.get("file"))
+    file = request.files.get("file")
+    if file and file.filename:
+        file.save(os.path.join(UPLOAD_FOLDER, file.filename))
+    return jsonify({"status": "ok"}), 200
 
-        if file and file.filename:
-            save_path = os.path.join(UPLOAD_FOLDER, file.filename)
-            file.save(save_path)
-        return jsonify({"status": "success"}), 200
-    except Exception as e:
-        print(f"ERROR file upload: {str(e)}")
-        return jsonify({"status": "error"}), 400
-
-# List all files
 @app.route("/list-all-files")
 def list_all_files():
-    file_list = os.listdir(UPLOAD_FOLDER)
     return jsonify({
-        "total_files": len(file_list),
-        "files": file_list
+        "total_files": len(os.listdir(UPLOAD_FOLDER)),
+        "files": os.listdir(UPLOAD_FOLDER)
     })
 
-# View single file
 @app.route("/files/<filename>")
 def view_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-# Clear all files
 @app.route("/clear-all")
 def clear_all():
-    for filename in os.listdir(UPLOAD_FOLDER):
-        file_path = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.isfile(file_path):
-            os.unlink(file_path)
-    return "✅ All files cleared"
+    for f in os.listdir(UPLOAD_FOLDER):
+        os.unlink(os.path.join(UPLOAD_FOLDER, f))
+    return "All files cleared"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
