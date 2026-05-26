@@ -1,57 +1,74 @@
-import logging
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 import os
-import shutil
-import sys
-
-# Enable full request logging
-logging.basicConfig(level=logging.INFO)
-werkzeug_log = logging.getLogger('werkzeug')
-werkzeug_log.setLevel(logging.INFO)
 
 app = Flask(__name__)
 CORS(app)
-os.environ["PYTHONUNBUFFERED"] = "1"
-sys.stdout.reconfigure(line_buffering=True)
 
-UPLOAD_FOLDER = "uploaded_files"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# --------------------------
+# Store all messages in memory
+# --------------------------
+messages = []
 
+# --------------------------
+# Receive message from Android
+# --------------------------
 @app.route("/send-message", methods=["POST"])
-def receive_text():
-    print("\n===== New POST /send-message =====")
-    print("Headers:", dict(request.headers))
-    print("Raw JSON:", request.get_json(force=True, silent=True))
-    return jsonify({"status": "ok"}), 200
+def receive_message():
+    data = request.get_json()
+    messages.append(data)  # Add new message to the list
+    print(f"Received message #{len(messages)}: {data}")
+    return jsonify({"status": "ok", "count": len(messages)}), 200
 
-@app.route("/upload-file", methods=["POST"])
-def receive_file():
-    print("\n===== New POST /upload-file =====")
-    print("Form data:", dict(request.form))
-    print("File:", request.files.get("file"))
-    file = request.files.get("file")
-    if file and file.filename:
-        file.save(os.path.join(UPLOAD_FOLDER, file.filename))
-    return jsonify({"status": "ok"}), 200
-
-@app.route("/list-all-files")
-def list_all_files():
+# --------------------------
+# View list of messages as JSON
+# --------------------------
+@app.route("/messages")
+def get_messages():
     return jsonify({
-        "total_files": len(os.listdir(UPLOAD_FOLDER)),
-        "files": os.listdir(UPLOAD_FOLDER)
+        "total_messages": len(messages),
+        "messages": messages
     })
 
-@app.route("/files/<filename>")
-def view_file(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+# --------------------------
+# View messages in a simple HTML page
+# --------------------------
+@app.route("/messages/view")
+def view_messages():
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Chat Messages</title>
+        <style>
+            body { font-family: Arial; padding: 20px; }
+            .msg { border: 1px solid #ccc; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>All Messages ({{ total }})</h1>
+        {% for msg in messages %}
+        <div class="msg">
+            <strong>From:</strong> {{ msg.username }} → {{ msg.receivename }}<br>
+            <strong>Time:</strong> {{ msg.timestamp }}<br>
+            <strong>Type:</strong> {{ msg.msgType }}<br>
+            <strong>Content:</strong> {{ msg.content }}
+        </div>
+        {% endfor %}
+    </body>
+    </html>
+    """
+    return render_template_string(html, total=len(messages), messages=messages)
 
-@app.route("/clear-all")
-def clear_all():
-    for f in os.listdir(UPLOAD_FOLDER):
-        os.unlink(os.path.join(UPLOAD_FOLDER, f))
-    return "All files cleared"
+# --------------------------
+# Clear all messages
+# --------------------------
+@app.route("/messages/clear")
+def clear_messages():
+    global messages
+    messages = []
+    return "All messages cleared!"
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    os.environ["PYTHONUNBUFFERED"] = "1"
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
