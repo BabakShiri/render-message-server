@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import os
 import shutil
 
 app = Flask(__name__)
+CORS(app)  # Allow cross-origin requests for Android
 
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -85,6 +87,7 @@ def clear_all_files():
     except Exception as e:
         return f"❌ Error: {str(e)}", 500
 
+# For Gunicorn / Render deployment
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
