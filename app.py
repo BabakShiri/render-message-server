@@ -10,7 +10,7 @@ messages = []
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Max file size: 20MB
+# Max upload size 20MB
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
 # Text message endpoints
@@ -61,7 +61,7 @@ def clear_messages():
     messages = []
     return "All messages cleared!"
 
-# File upload - POST
+# File upload POST
 @app.route("/upload-file", methods=["POST"])
 def upload_file():
     try:
@@ -76,7 +76,6 @@ def upload_file():
         username = request.form.get("username", "AndroidUser")
         receivename = request.form.get("receivename", "ChatReceiver")
 
-        # Safe filename
         filename = f"{timestamp}_{os.path.basename(file.filename)}"
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
@@ -103,7 +102,7 @@ def upload_file():
         print(f"Upload error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# File upload - GET (fix 405 error)
+# GET route to fix 405 error
 @app.route("/upload-file", methods=["GET"])
 def upload_file_guide():
     return "Use POST method with form-data to upload files."
@@ -113,7 +112,7 @@ def upload_file_guide():
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-# List files (add error catch)
+# List files with error handling
 @app.route("/files/list")
 def list_files():
     try:
@@ -125,7 +124,7 @@ def list_files():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Clear files
+# Clear files with error handling
 @app.route("/files/clear")
 def clear_files():
     try:
