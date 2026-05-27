@@ -10,7 +10,6 @@ messages = []
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Max upload size 20MB
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
 # Text message endpoints
@@ -47,7 +46,8 @@ def view_messages():
             <strong>From:</strong> {{ msg.username }} → {{ msg.receivename }}<br>
             <strong>Time:</strong> {{ msg.timestamp }}<br>
             <strong>Type:</strong> {{ msg.msgType }}<br>
-            <strong>Content:</strong> {{ msg.content }}
+            <strong>Content:</strong> {{ msg.content }}<br>
+            <strong>File URL:</strong> {{ msg.file_url }}
         </div>
         {% endfor %}
     </body>
@@ -72,21 +72,24 @@ def upload_file():
         if not file.filename:
             return jsonify({"status": "error", "message": "No selected file"}), 400
 
+        # Read all fields from client form data
         timestamp = request.form.get("timestamp", str(int(time.time() * 1000)))
         username = request.form.get("username", "AndroidUser")
         receivename = request.form.get("receivename", "ChatReceiver")
+        # Get extension sent from Android
+        file_ext = request.form.get("extension", "file")
 
         filename = f"{timestamp}_{os.path.basename(file.filename)}"
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
 
+        # Use extension from client as msgType
         file_msg = {
             "timestamp": int(timestamp),
             "content": file.filename,
-            "msgType": "file",
+            "msgType": file_ext,
             "username": username,
             "receivename": receivename,
-            "isSentByMe": True,
             "file_url": f"/files/{filename}"
         }
         messages.append(file_msg)
@@ -102,17 +105,14 @@ def upload_file():
         print(f"Upload error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# GET route to fix 405 error
 @app.route("/upload-file", methods=["GET"])
 def upload_file_guide():
     return "Use POST method with form-data to upload files."
 
-# File download
 @app.route("/files/<filename>")
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
-# List files with error handling
 @app.route("/files/list")
 def list_files():
     try:
@@ -124,7 +124,6 @@ def list_files():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Clear files with error handling
 @app.route("/files/clear")
 def clear_files():
     try:
