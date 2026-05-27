@@ -6,12 +6,14 @@ import time
 app = Flask(__name__)
 CORS(app)
 
+# Main storage (Python list, direct index access)
 messages = []
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
+# -------------------------- Original Routes (Keep all) --------------------------
 # Receive text message
 @app.route("/send-message", methods=["POST"])
 def receive_message():
@@ -21,7 +23,7 @@ def receive_message():
     print(f"Received message #{len(messages)}: {data}")
     return jsonify({"status": "ok", "count": len(messages)}), 200
 
-# Get all messages in JSON
+# Get all messages (JSON format)
 @app.route("/messages")
 def get_messages():
     return jsonify({
@@ -29,7 +31,7 @@ def get_messages():
         "messages": messages
     })
 
-# Web view page (shows index and deleted status)
+# Web view page (with index display)
 @app.route("/messages/view")
 def view_messages():
     html = """
@@ -60,14 +62,14 @@ def view_messages():
     """
     return render_template_string(html, total=len(messages), messages=messages)
 
-# Clear all messages (full reset)
+# Clear all messages
 @app.route("/messages/clear")
 def clear_messages():
     global messages
     messages = []
     return "All messages cleared!"
 
-# Delete by index: delete file first, then empty fields, mark deleted = true
+# Delete message by index
 @app.route("/messages/delete-index/<int:index>", methods=["POST"])
 def delete_by_index(index):
     if index < 0 or index >= len(messages):
@@ -75,21 +77,17 @@ def delete_by_index(index):
 
     target_msg = messages[index]
 
-    # Step 1: Delete physical file first
     if target_msg.get("file_url") and target_msg["file_url"].startswith("/files/"):
         filename = target_msg["file_url"].replace("/files/", "")
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         if os.path.exists(file_path):
             os.remove(file_path)
 
-    # Step 2: Empty all content fields
     target_msg["content"] = ""
     target_msg["msgType"] = ""
     target_msg["username"] = ""
     target_msg["receivename"] = ""
     target_msg["file_url"] = ""
-
-    # Step 3: Mark as deleted
     target_msg["deleted"] = True
 
     return jsonify({
@@ -172,6 +170,29 @@ def clear_files():
         return "All files cleared!"
     except Exception as e:
         return f"Clear files error: {str(e)}"
+
+# -------------------------- NEW: Get single message by index --------------------------
+# Direct index access (O(1), no loop)
+@app.route("/messages/<int:index>", methods=["GET"])
+def get_message_by_index(index):
+    if 0 <= index < len(messages):
+        return jsonify(messages[index])
+    return jsonify({"error": "Index out of range"}), 404
+
+# -------------------------- NEW: Get single file by index --------------------------
+@app.route("/files/<int:index>", methods=["GET"])
+def get_file_by_index(index):
+    try:
+        file_list = os.listdir(UPLOAD_FOLDER)
+        if 0 <= index < len(file_list):
+            return jsonify({
+                "index": index,
+                "filename": file_list[index],
+                "url": f"/files/{file_list[index]}"
+            })
+        return jsonify({"error": "Index out of range"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     os.environ["PYTHONUNBUFFERED"] = "1"
