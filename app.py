@@ -1,18 +1,19 @@
 from flask import Flask, request, jsonify, render_template_string, send_from_directory
 from flask_cors import CORS
 import os
+import time
 
 app = Flask(__name__)
 CORS(app)
 
-# Store text messages and uploaded files
 messages = []
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# --------------------------
-# Text message endpoints (unchanged, keep working)
-# --------------------------
+# Allow ALL file types, set reasonable max size (20MB)
+app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
+
+# Text message endpoints
 @app.route("/send-message", methods=["POST"])
 def receive_message():
     data = request.get_json()
@@ -60,50 +61,51 @@ def clear_messages():
     messages = []
     return "All messages cleared!"
 
-# --------------------------
-# File upload endpoints (new)
-# --------------------------
+# File upload endpoint (support image/video/audio/docs/voice)
 @app.route("/upload-file", methods=["POST"])
 def upload_file():
-    if "file" not in request.files:
-        return jsonify({"status": "error", "message": "No file part"}), 400
-    
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"status": "error", "message": "No selected file"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"status": "error", "message": "No file part"}), 400
+        
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"status": "error", "message": "No selected file"}), 400
 
-    # Get metadata from form data
-    timestamp = request.form.get("timestamp", str(int(os.times.time() * 1000)))
-    username = request.form.get("username", "AndroidUser")
-    receivename = request.form.get("receivename", "ChatReceiver")
+        # Get form data
+        timestamp = request.form.get("timestamp", str(int(time.time() * 1000)))
+        username = request.form.get("username", "AndroidUser")
+        receivename = request.form.get("receivename", "ChatReceiver")
 
-    # Save file
-    filename = f"{timestamp}_{file.filename}"
-    file_path = os.path.join(UPLOAD_FOLDER, filename)
-    file.save(file_path)
+        # Save file
+        filename = f"{timestamp}_{file.filename}"
+        file_path = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(file_path)
 
-    # Add to messages list as a file message
-    file_msg = {
-        "timestamp": int(timestamp),
-        "content": file.filename,
-        "msgType": "file",
-        "username": username,
-        "receivename": receivename,
-        "isSentByMe": True,
-        "file_url": f"/files/{filename}"
-    }
-    messages.append(file_msg)
+        # Add to message list
+        file_msg = {
+            "timestamp": int(timestamp),
+            "content": file.filename,
+            "msgType": "file",
+            "username": username,
+            "receivename": receivename,
+            "isSentByMe": True,
+            "file_url": f"/files/{filename}"
+        }
+        messages.append(file_msg)
 
-    print(f"File uploaded: {filename}")
-    return jsonify({
-        "status": "ok",
-        "filename": filename,
-        "url": f"/files/{filename}"
-    }), 200
+        print(f"File uploaded successfully: {filename}")
+        return jsonify({
+            "status": "ok",
+            "filename": filename,
+            "url": f"/files/{filename}"
+        }), 200
 
-# --------------------------
-# File download endpoints (new)
-# --------------------------
+    except Exception as e:
+        print(f"Upload error: {str(e)}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# File download
 @app.route("/files/<filename>")
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
