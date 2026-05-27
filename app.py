@@ -10,7 +10,7 @@ messages = []
 UPLOAD_FOLDER = "uploaded_files"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# Allow ALL file types, set reasonable max size (20MB)
+# Max file size: 20MB
 app.config['MAX_CONTENT_LENGTH'] = 20 * 1024 * 1024
 
 # Text message endpoints
@@ -61,7 +61,7 @@ def clear_messages():
     messages = []
     return "All messages cleared!"
 
-# File upload endpoint (support image/video/audio/docs/voice)
+# File upload - POST
 @app.route("/upload-file", methods=["POST"])
 def upload_file():
     try:
@@ -69,14 +69,15 @@ def upload_file():
             return jsonify({"status": "error", "message": "No file part"}), 400
         
         file = request.files["file"]
-        if file.filename == "":
+        if not file.filename:
             return jsonify({"status": "error", "message": "No selected file"}), 400
 
         timestamp = request.form.get("timestamp", str(int(time.time() * 1000)))
         username = request.form.get("username", "AndroidUser")
         receivename = request.form.get("receivename", "ChatReceiver")
 
-        filename = f"{timestamp}_{file.filename}"
+        # Safe filename
+        filename = f"{timestamp}_{os.path.basename(file.filename)}"
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
 
@@ -99,32 +100,42 @@ def upload_file():
         }), 200
 
     except Exception as e:
-        print(f"Upload error: {str(e)}"))
+        print(f"Upload error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Add this new GET route
+# File upload - GET (fix 405 error)
 @app.route("/upload-file", methods=["GET"])
 def upload_file_guide():
     return "Use POST method with form-data to upload files."
+
 # File download
 @app.route("/files/<filename>")
 def download_file(filename):
     return send_from_directory(UPLOAD_FOLDER, filename)
 
+# List files (add error catch)
 @app.route("/files/list")
 def list_files():
-    return jsonify({
-        "total_files": len(os.listdir(UPLOAD_FOLDER)),
-        "files": os.listdir(UPLOAD_FOLDER)
-    })
+    try:
+        file_list = os.listdir(UPLOAD_FOLDER)
+        return jsonify({
+            "total_files": len(file_list),
+            "files": file_list
+        })
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
+# Clear files
 @app.route("/files/clear")
 def clear_files():
-    for filename in os.listdir(UPLOAD_FOLDER):
-        file_path = os.path.join(UPLOAD_FOLDER, filename)
-        if os.path.isfile(file_path):
-            os.unlink(file_path)
-    return "All files cleared!"
+    try:
+        for filename in os.listdir(UPLOAD_FOLDER):
+            file_path = os.path.join(UPLOAD_FOLDER, filename)
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+        return "All files cleared!"
+    except Exception as e:
+        return f"Clear files error: {str(e)}"
 
 if __name__ == "__main__":
     os.environ["PYTHONUNBUFFERED"] = "1"
