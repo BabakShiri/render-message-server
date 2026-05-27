@@ -99,7 +99,7 @@ def upload_file():
         }), 200
 
     except Exception as e:
-        print(f"Upload error: {str(e)}")
+        print(f"Upload error: {str(e)}"))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # Add this new GET route
