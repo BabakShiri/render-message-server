@@ -72,17 +72,14 @@ def upload_file():
         if file.filename == "":
             return jsonify({"status": "error", "message": "No selected file"}), 400
 
-        # Get form data
         timestamp = request.form.get("timestamp", str(int(time.time() * 1000)))
         username = request.form.get("username", "AndroidUser")
         receivename = request.form.get("receivename", "ChatReceiver")
 
-        # Save file
         filename = f"{timestamp}_{file.filename}"
         file_path = os.path.join(UPLOAD_FOLDER, filename)
         file.save(file_path)
 
-        # Add to message list
         file_msg = {
             "timestamp": int(timestamp),
             "content": file.filename,
@@ -105,6 +102,10 @@ def upload_file():
         print(f"Upload error: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# Add this new GET route
+@app.route("/upload-file", methods=["GET"])
+def upload_file_guide():
+    return "Use POST method with form-data to upload files."
 # File download
 @app.route("/files/<filename>")
 def download_file(filename):
